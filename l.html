@@ -1,0 +1,853 @@
+# -------------------- HTML TEMPLATE 
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quản Lý Bán Hàng (Giá theo ngày)</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f4f7f6; padding: 20px; }
+        .card { box-shadow: 0 4px 8px rgba(0,0,0,0.1); border: none; margin-bottom: 20px; }
+        .table th { background-color: #343a40; color: white; }
+        .table td { vertical-align: middle; }
+        .flash-message { animation: fadeOut 5s forwards; }
+        @keyframes fadeOut { 0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; display: none; } }
+        .form-container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .help-text { font-size: 0.85rem; color: #6c757d; }
+        .required::after { content: " *"; color: #dc3545; }
+        .new-sp-section { background: #f0f9ff; padding: 15px; border-radius: 8px; margin-top: 15px; border: 2px dashed #0dcaf0; }
+        .sp-management-section { background: #fff3cd; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #ffc107; }
+        .sp-list-item { background: white; padding: 10px; margin-bottom: 5px; border-radius: 5px; border: 1px solid #dee2e6; }
+        .item-row { background-color: #f8f9fa; margin-bottom: 10px; padding: 10px; border-radius: 5px; border-left: 4px solid #0d6efd; }
+        .remove-item { cursor: pointer; color: #dc3545; }
+        .auto-ma { background-color: #e9ecef; font-weight: bold; }
+        .status-badge { font-size: 0.9rem; padding: 5px 10px; border-radius: 20px; }
+        .status-dang-xu-ly { background-color: #ffc107; color: #212529; }
+        .status-da-giao { background-color: #28a745; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 class="text-center mb-4 text-primary fw-bold"><i class="bi bi-cart-check"></i> HỆ THỐNG QUẢN LÝ BÁN HÀNG</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show flash-message" role="alert">
+                        <i class="bi bi-{% if category=='success' %}check-circle-fill{% elif category=='danger' %}exclamation-triangle-fill{% elif category=='warning' %}exclamation-circle-fill{% else %}info-circle-fill{% endif %}"></i>
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <!-- FORM THÊM ĐƠN HÀNG MỚI -->
+        <div class="form-container mb-4">
+            <h5 class="card-title text-success mb-3"><i class="bi bi-plus-circle"></i> Thêm đơn hàng mới</h5>
+            <form method="POST" action="/add" id="addOrderForm" onsubmit="return validateAddForm()">
+                <div class="row g-3 mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Mã ĐH</label>
+                        <input type="text" class="form-control auto-ma" value="{{ next_ma_dh }}" readonly>
+                        <input type="hidden" name="MaDH" value="{{ next_ma_dh }}">
+                        <small class="text-muted">Tự động tạo</small>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label required">Khách hàng</label>
+                        <input type="text" name="TenKhachHang" class="form-control" placeholder="Nguyễn Văn A" required id="tenKHInput">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label required">Ngày bán</label>
+                        <input type="text" name="NgayBan" class="form-control" value="{{ today_ddmmyyyy }}" readonly id="ngayBanInput">
+                    </div>
+                </div>
+                <!-- Danh sách mặt hàng (ĐÃ XÓA TÊN SP) -->
+                <div id="itemsContainer">
+                    <div class="item-row" id="item0">
+                        <div class="row g-3 align-items-center">
+                            <div class="col-md-4">
+                                <label class="form-label">Mã SP</label>
+                                <select name="MaSP_0" class="form-control item-masp" required onchange="updateItemInfo(this, 0)">
+                                    <option value="">-- Chọn mã SP --</option>
+                                    {% for ma_sp, info in sp_mapping.items() %}
+                                        <option value="{{ ma_sp }}">{{ ma_sp }} - {{ info.name }}</option>
+                                    {% endfor %}
+                                    <option value="NEW">-- Tạo SP mới --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Giá</label>
+                                <input type="number" name="GiaBan_0" class="form-control readonly-input" readonly>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Số lượng</label>
+                                <input type="number" name="SoLuong_0" class="form-control item-soluong" min="1" max="10000" value="1" required oninput="updateItemTotal(0)">
+                            </div>
+                            <div class="col-md-2 text-center">
+                                <label class="form-label">&nbsp;</label>
+                                <div><i class="bi bi-trash remove-item" onclick="removeItem(0)" style="font-size:1.5rem;"></i></div>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-3 offset-md-9">
+                                <span class="fw-bold">Thành tiền: <span id="thanhTien_0">0</span> đ</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-md-12">
+                        <button type="button" class="btn btn-outline-primary" onclick="addNewItem()"><i class="bi bi-plus"></i> Thêm mặt hàng</button>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-3 offset-md-9">
+                        <label class="form-label fw-bold">Tổng đơn hàng:</label>
+                        <div class="form-control auto-calc" id="tongDonHangDisplay">0 đ</div>
+                        <input type="hidden" name="TongTien" id="tongDonHangInput" value="0">
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <button type="submit" class="btn btn-success w-100" id="submitBtn"><i class="bi bi-plus-lg"></i> Thêm Đơn Hàng</button>
+                    </div>
+                </div>
+            </form>
+            <!-- Form tạo SP mới -->
+            <div class="new-sp-section" id="newSpSection" style="display: none;">
+                <h6 class="text-info mb-3"><i class="bi bi-plus-circle-dotted"></i> TẠO SẢN PHẨM MỚI</h6>
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <input type="text" id="maSPNewInput" class="form-control" placeholder="Mã SP mới">
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" id="tenSPNewInput" class="form-control" placeholder="Tên SP mới">
+                    </div>
+                    <div class="col-md-3">
+                        <input type="number" id="giaNewInput" class="form-control" placeholder="Giá" min="1">
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="button" class="btn btn-info w-100" onclick="addNewSP()" id="addSPBtn"><i class="bi bi-check-lg"></i> Thêm SP</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- QUẢN LÝ SẢN PHẨM -->
+        <div class="sp-management-section">
+            <h6 class="text-warning mb-3"><i class="bi bi-gear"></i> QUẢN LÝ DANH SÁCH SẢN PHẨM <small class="text-muted">(Tổng: {{ sp_mapping|length }} sản phẩm)</small></h6>
+            <div class="row">
+                {% for ma_sp, info in sp_mapping.items() %}
+                <div class="col-md-4 mb-2">
+                    <div class="sp-list-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong class="text-primary">{{ ma_sp }}</strong>:
+                                <span class="sp-name">{{ info.name }}</span> -
+                                <span class="text-danger">{{ "{:,.0f}".format(info.price) }} đ</span>
+                            </div>
+                            <div>
+                                {% if ma_sp|int|string != ma_sp and ma_sp >= 'SP016' %}
+                                <button type="button" class="btn btn-danger btn-sm delete-sp-btn"
+                                        onclick="deleteSP('{{ ma_sp }}', '{{ info.name|replace("'", "\\'") }}')"
+                                        title="Xóa">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                                {% else %}
+                                <span class="badge bg-secondary" title="Sản phẩm mặc định">Mặc định</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <!-- FORM TÌM KIẾM (THEO MÃ ĐH, TÊN KHÁCH HÀNG) -->
+        <div class="form-container">
+            <h5 class="card-title mb-3"><i class="bi bi-search"></i> TÌM KIẾM ĐƠN HÀNG</h5>
+            <form method="GET" action="/" class="row g-3">
+                <div class="search-grid">
+                    <div>
+                        <label class="form-label"><strong>Từ khóa (mã ĐH, tên khách):</strong></label>
+                        <input type="text" name="search_keyword" class="form-control" placeholder="Nhập mã đơn hàng hoặc tên khách..." value="{{ search_keyword }}">
+                    </div>
+                    <div>
+                        <label class="form-label"><strong>Khoảng tổng tiền:</strong></label>
+                        <div class="row g-2">
+                            <div class="col"><input type="number" name="min_price" class="form-control" placeholder="Từ" min="1000" value="{{ min_price }}"></div>
+                            <div class="col"><input type="number" name="max_price" class="form-control" placeholder="Đến" min="1000" value="{{ max_price }}"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="advanced-search" id="advancedSearch" style="display: none;">
+                    <h6 class="mb-3"><i class="bi bi-calendar-date"></i> Tìm theo ngày:</h6>
+                    <div class="row g-3">
+                        <div class="col-md-6"><input type="text" name="from_date" class="form-control date-input" placeholder="dd/mm/yyyy" value="{{ from_date }}"></div>
+                        <div class="col-md-6"><input type="text" name="to_date" class="form-control date-input" placeholder="dd/mm/yyyy" value="{{ to_date }}"></div>
+                    </div>
+                </div>
+                <div class="search-btn-container text-center">
+                    <span class="toggle-advanced" onclick="toggleAdvancedSearch()"><i class="bi bi-chevron-down" id="advancedIcon"></i> <span id="advancedText">Hiển thị tìm theo ngày</span></span><br>
+                    <button type="submit" class="btn btn-primary px-5"><i class="bi bi-search"></i> Tìm</button>
+                    <a href="/" class="btn btn-secondary px-5"><i class="bi bi-x-circle"></i> Xóa</a>
+                </div>
+            </form>
+        </div>
+        <!-- KẾT QUẢ TÌM KIẾM (ĐƠN HÀNG GỘP) -->
+        {% if not data.empty %}
+            <div class="d-flex justify-content-between align-items-center mt-3 mb-3">
+                <div class="alert alert-success mb-0"><i class="bi bi-check-circle"></i> Tìm thấy {{ data.shape[0] }} đơn hàng</div>
+                <div class="dropdown">
+                    <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-sort-down"></i> Sắp xếp
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="{{ url_for('index', search_keyword=search_keyword, from_date=from_date, to_date=to_date, min_price=min_price, max_price=max_price, sort_by='TongTien', sort_order='asc') }}">Tổng tiền (thấp→cao)</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('index', search_keyword=search_keyword, from_date=from_date, to_date=to_date, min_price=min_price, max_price=max_price, sort_by='TongTien', sort_order='desc') }}">Tổng tiền (cao→thấp)</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('index', search_keyword=search_keyword, from_date=from_date, to_date=to_date, min_price=min_price, max_price=max_price, sort_by='NgayBan', sort_order='asc') }}">Ngày bán (cũ→mới)</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('index', search_keyword=search_keyword, from_date=from_date, to_date=to_date, min_price=min_price, max_price=max_price, sort_by='NgayBan', sort_order='desc') }}">Ngày bán (mới→cũ)</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{{ url_for('index', search_keyword=search_keyword, from_date=from_date, to_date=to_date, min_price=min_price, max_price=max_price, sort_by='TrangThaiAsc_MaDHAsc') }}">Trạng thái (Đang xử lý trước) + Mã ĐH tăng</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('index', search_keyword=search_keyword, from_date=from_date, to_date=to_date, min_price=min_price, max_price=max_price, sort_by='TrangThaiAsc_MaDHDesc') }}">Trạng thái (Đang xử lý trước) + Mã ĐH giảm</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('index', search_keyword=search_keyword, from_date=from_date, to_date=to_date, min_price=min_price, max_price=max_price, sort_by='TrangThaiDesc_MaDHAsc') }}">Trạng thái (Đã giao trước) + Mã ĐH tăng</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('index', search_keyword=search_keyword, from_date=from_date, to_date=to_date, min_price=min_price, max_price=max_price, sort_by='TrangThaiDesc_MaDHDesc') }}">Trạng thái (Đã giao trước) + Mã ĐH giảm</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-bordered bg-white shadow-sm">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>STT</th>
+                            <th>Mã ĐH</th>
+                            <th>Khách Hàng</th>
+                            <th>Ngày Bán</th>
+                            <th>Số mặt hàng</th>
+                            <th>Tổng Tiền</th>
+                            <th>Trạng thái</th>
+                            <th>Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for idx, row in data.iterrows() %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ row['MaDH'] }}</td>
+                            <td>{{ row['TenKhachHang'] }}</td>
+                            <td>{{ format_date_for_display(row['NgayBan']) }}</td>
+                            <td class="text-center">{{ row['SoMatHang'] }}</td>
+                            <td class="fw-bold text-primary">{{ "{:,.0f}".format(row['TongTien']) }} đ</td>
+                            <td>
+                                {% if row['TrangThai'] == 'Đang xử lý' %}
+                                    <span class="status-badge status-dang-xu-ly">{{ row['TrangThai'] }}</span>
+                                {% elif row['TrangThai'] == 'Đã giao hàng' %}
+                                    <span class="status-badge status-da-giao">{{ row['TrangThai'] }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ row['TrangThai'] }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-nowrap">
+                                <button class="btn btn-info btn-sm" onclick="viewOrderDetails('{{ row['MaDH'] }}')" title="Xem chi tiết"><i class="bi bi-eye"></i></button>
+                                {% if row['TrangThai'] == 'Đang xử lý' %}
+                                <a href="/edit_order/{{ row['MaDH'] }}" class="btn btn-warning btn-sm" title="Sửa"><i class="bi bi-pencil"></i></a>
+                                <a href="/delete_order/{{ row['MaDH'] }}" class="btn btn-danger btn-sm" onclick="return confirm('Xóa đơn hàng {{ row['MaDH'] }}?')" title="Xóa"><i class="bi bi-trash"></i></a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot><tr class="table-info"><td colspan="5" class="text-end fw-bold">TỔNG CỘNG:</td><td class="fw-bold text-danger">{{ "{:,.0f}".format(total_amount) }} đ</td><td></td><td></td></tr></tfoot>
+                </table>
+            </div>
+        {% elif has_search_criteria %}
+            <div class="alert alert-warning mt-3"><i class="bi bi-search"></i> Không tìm thấy đơn hàng nào. <a href="/" class="alert-link">Xem tất cả</a></div>
+        {% else %}
+            <div class="alert alert-info mt-3 text-center"><i class="bi bi-info-circle"></i> Không có đơn hàng nào. Hãy thêm mới!</div>
+        {% endif %}
+    </div>
+    <!-- Modal chi tiết đơn hàng -->
+    <div class="modal fade" id="orderDetailModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Chi tiết đơn hàng <span id="detailMaDH"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <table class="table table-sm">
+                        <thead><tr><th>Mã SP</th><th>Tên SP</th><th>Giá</th><th>Số lượng</th><th>Thành tiền</th></tr></thead>
+                        <tbody id="detailItems"></tbody>
+                        <tfoot><tr><th colspan="4" class="text-end">Tổng cộng:</th><th id="detailTotal"></th></tr></tfoot>
+                    </table>
+                </div>
+                <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button></div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const spMapping = {{ sp_mapping|tojson }};
+        let itemCount = 1;
+        let selectedMasp = [];
+        // Hàm lấy giá: 
+        function getPrice(ma_sp) {
+            return spMapping[ma_sp] ? spMapping[ma_sp].price : 0;
+        }
+        function updateSelectedMasp() {
+            const selects = document.querySelectorAll('select.item-masp');
+            selectedMasp = [];
+            selects.forEach(sel => {
+                const val = sel.value;
+                if (val && val !== 'NEW' && val !== '') {
+                    selectedMasp.push(val);
+                }
+            });
+        }
+        function refreshDropdowns(exceptSelect = null) {
+            const selects = document.querySelectorAll('select.item-masp');
+            const currentValues = {};
+            selects.forEach(sel => { currentValues[sel.name] = sel.value; });
+            selects.forEach(sel => {
+                if (exceptSelect && sel === exceptSelect) return;
+                const currentVal = sel.value;
+                let optionsHtml = '<option value="">-- Chọn mã SP --</option>';
+                for (let ma in spMapping) {
+                    if (selectedMasp.includes(ma) && ma !== currentVal) {
+                        continue;
+                    }
+                    optionsHtml += `<option value="${ma}">${ma} - ${spMapping[ma].name}</option>`;
+                }
+                optionsHtml += '<option value="NEW">-- Tạo SP mới --</option>';
+                sel.innerHTML = optionsHtml;
+                if (currentVal && (currentVal === 'NEW' || spMapping[currentVal])) {
+                    sel.value = currentVal;
+                } else {
+                    sel.value = '';
+                }
+            });
+            updateSelectedMasp();
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            updateSelectedMasp();
+            refreshDropdowns();
+            updateItemTotal(0);
+            document.getElementById('ngayBanInput').addEventListener('change', function() {
+                document.querySelectorAll('.item-row').forEach(row => {
+                    const id = row.id.replace('item','');
+                    const select = row.querySelector('select.item-masp');
+                    if (select.value && select.value !== 'NEW') {
+                        updateItemInfo(select, id);
+                    }
+                });
+            });
+        });
+        function addNewItem() {
+            const container = document.getElementById('itemsContainer');
+            const idx = itemCount;
+            const div = document.createElement('div'); div.className='item-row'; div.id=`item${idx}`;
+            div.innerHTML = `
+                <div class="row g-3 align-items-center">
+                    <div class="col-md-4">
+                        <select name="MaSP_${idx}" class="form-control item-masp" required onchange="updateItemInfo(this, ${idx})">
+                            <option value="">-- Chọn mã SP --</option>
+                            ${Object.keys(spMapping).map(m => `<option value="${m}">${m} - ${spMapping[m].name}</option>`).join('')}
+                            <option value="NEW">-- Tạo SP mới --</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3"><input type="number" name="GiaBan_${idx}" class="form-control readonly-input" readonly></div>
+                    <div class="col-md-3"><input type="number" name="SoLuong_${idx}" class="form-control item-soluong" min="1" max="10000" value="1" required oninput="updateItemTotal(${idx})"></div>
+                    <div class="col-md-2 text-center"><i class="bi bi-trash remove-item" onclick="removeItem(${idx})" style="font-size:1.5rem;"></i></div>
+                </div>
+                <div class="row mt-2"><div class="col-md-3 offset-md-9"><span class="fw-bold">Thành tiền: <span id="thanhTien_${idx}">0</span> đ</span></div></div>
+            `;
+            container.appendChild(div);
+            itemCount++;
+            updateSelectedMasp();
+            refreshDropdowns();
+        }
+        function removeItem(idx) {
+            document.getElementById(`item${idx}`)?.remove();
+            updateSelectedMasp();
+            refreshDropdowns();
+            updateOrderTotal();
+        }
+        function updateItemInfo(select, idx) {
+            const ma = select.value;
+            const row = select.closest('.item-row');
+            if (!row) return;
+            const giaInput = row.querySelector(`input[name="GiaBan_${idx}"]`);
+            if (ma && ma !== 'NEW' && spMapping[ma]) {
+                giaInput.value = getPrice(ma);
+                updateItemTotal(idx);
+            } else if (ma === 'NEW') {
+                document.getElementById('newSpSection').style.display = 'block';
+                window.currentNewItemIndex = idx;
+            } else {
+                giaInput.value = '';
+                document.getElementById(`thanhTien_${idx}`).innerText = '0';
+            }
+            updateSelectedMasp();
+            refreshDropdowns(select);
+        }
+        function updateItemTotal(idx) {
+            const gia = parseFloat(document.querySelector(`input[name="GiaBan_${idx}"]`).value) || 0;
+            const sl = parseFloat(document.querySelector(`input[name="SoLuong_${idx}"]`).value) || 0;
+            document.getElementById(`thanhTien_${idx}`).innerText = (gia*sl).toLocaleString('vi-VN');
+            updateOrderTotal();
+        }
+        function updateOrderTotal() {
+            let total = 0;
+            document.querySelectorAll('.item-row').forEach(item => {
+                const id = item.id.replace('item','');
+                const val = document.getElementById(`thanhTien_${id}`)?.innerText.replace(/\\./g,'').replace(' đ','');
+                total += parseFloat(val) || 0;
+            });
+            document.getElementById('tongDonHangDisplay').innerText = total.toLocaleString('vi-VN') + ' đ';
+            document.getElementById('tongDonHangInput').value = total;
+        }
+        function validateAddForm() {
+            if (!document.getElementById('tenKHInput').value.trim() || document.getElementById('tenKHInput').value.trim().length<2) {
+                alert('Tên khách hàng phải có ít nhất 2 ký tự'); return false;
+            }
+            const items = document.querySelectorAll('.item-row');
+            if (items.length===0) { alert('Phải có ít nhất một mặt hàng'); return false; }
+            const maspSet = new Set();
+            for (let i=0; i<items.length; i++) {
+                const sel = items[i].querySelector('select.item-masp');
+                if (!sel.value || sel.value==='NEW') { alert('Chọn mã SP cho mặt hàng thứ '+(i+1)); return false; }
+                if (maspSet.has(sel.value)) {
+                    alert(`Mã SP "${sel.value}" đã được chọn ở mặt hàng khác!`);
+                    return false;
+                }
+                maspSet.add(sel.value);
+                const sl = items[i].querySelector('input.item-soluong').value;
+                if (sl<=0 || sl>10000) { alert('Số lượng mặt hàng thứ '+(i+1)+' không hợp lệ'); return false; }
+            }
+            document.getElementById('submitBtn').disabled = true;
+            document.getElementById('submitBtn').innerHTML = '<span class="spinner-border spinner-border-sm"></span> Đang xử lý...';
+            return true;
+        }
+        function viewOrderDetails(maDH) {
+            fetch(`/api/order_details/${maDH}`).then(r=>r.json()).then(data=>{
+                if (data.success) {
+                    document.getElementById('detailMaDH').textContent = maDH;
+                    const tbody = document.getElementById('detailItems');
+                    tbody.innerHTML = '';
+                    let total = 0;
+                    data.items.forEach(item => {
+                        tbody.innerHTML += `<tr><td>${item.ma_sp}</td><td>${item.ten_sp}</td><td>${item.gia.toLocaleString('vi-VN')} đ</td><td>${item.so_luong}</td><td>${item.thanh_tien.toLocaleString('vi-VN')} đ</td></tr>`;
+                        total += item.thanh_tien;
+                    });
+                    document.getElementById('detailTotal').textContent = total.toLocaleString('vi-VN') + ' đ';
+                    new bootstrap.Modal(document.getElementById('orderDetailModal')).show();
+                } else alert('Lỗi: '+data.error);
+            });
+        }
+        function addNewSP() {
+            const ma = document.getElementById('maSPNewInput').value.trim().toUpperCase();
+            const ten = document.getElementById('tenSPNewInput').value.trim();
+            const gia = parseFloat(document.getElementById('giaNewInput').value);
+            if (!ma || ma.length<2) { alert('Mã SP không hợp lệ'); return; }
+            if (!ten || ten.length<2) { alert('Tên SP không hợp lệ'); return; }
+            if (isNaN(gia) || gia<1) { alert('Giá không hợp lệ'); return; }
+            fetch('/api/add_sp', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ma_sp:ma, ten_sp:ten, gia_sp:gia})
+            }).then(r=>r.json()).then(data=>{
+                if (data.success) {
+                    spMapping[ma] = {name:ten, price:h};
+                    // Không cập nhật priceHistory nữa
+                    document.querySelectorAll('select.item-masp').forEach(s=>{
+                        const opt = document.createElement('option'); opt.value=ma; opt.text=`${ma} - ${ten}`;
+                        s.appendChild(opt);
+                    });
+                    if (window.currentNewItemIndex !== undefined) {
+                        const sel = document.querySelector(`select[name="MaSP_${window.currentNewItemIndex}"]`);
+                        if (sel) { sel.value = ma; updateItemInfo(sel, window.currentNewItemIndex); }
+                        window.currentNewItemIndex = undefined;
+                    }
+                    document.getElementById('newSpSection').style.display = 'none';
+                    document.getElementById('maSPNewInput').value = '';
+                    document.getElementById('tenSPNewInput').value = '';
+                    document.getElementById('giaNewInput').value = '';
+                    updateSelectedMasp();
+                    refreshDropdowns();
+                } else alert('Lỗi: '+data.error);
+            });
+        }
+        function deleteSP(ma, ten) {
+            if (!confirm(`Xóa sản phẩm ${ma}?`)) return;
+            fetch('/api/delete_sp', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ma_sp:ma})})
+            .then(r=>r.json()).then(data=>{ if(data.success) location.reload(); else alert('Lỗi: '+data.error); });
+        }
+        function toggleAdvancedSearch() {
+            const adv = document.getElementById('advancedSearch');
+            const icon = document.getElementById('advancedIcon');
+            const text = document.getElementById('advancedText');
+            if (adv.style.display === 'none') {
+                adv.style.display = 'block';
+                icon.className = 'bi bi-chevron-up';
+                text.innerText = 'Ẩn tìm theo ngày';
+            } else {
+                adv.style.display = 'none';
+                icon.className = 'bi bi-chevron-down';
+                text.innerText = 'Hiển thị tìm theo ngày';
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+"""
+# -------------------- TEMPLATE SỬA ĐƠN HÀNG 
+EDIT_ORDER_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sửa đơn hàng</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f4f7f6; padding: 20px; }
+        .card { box-shadow: 0 4px 8px rgba(0,0,0,0.1); border: none; margin-bottom: 20px; }
+        .form-container { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .item-row { background-color: #f8f9fa; margin-bottom: 10px; padding: 10px; border-radius: 5px; border-left: 4px solid #0d6efd; }
+        .remove-item { cursor: pointer; color: #dc3545; font-size: 1.5rem; }
+        .help-text { font-size: 0.85rem; color: #6c757d; }
+        .required::after { content: " *"; color: #dc3545; }
+        .new-sp-section { background: #f0f9ff; padding: 15px; border-radius: 8px; margin-top: 15px; border: 2px dashed #0dcaf0; }
+        .readonly-bg { background-color: #e9ecef; }
+        .status-badge { font-size: 0.9rem; padding: 5px 10px; border-radius: 20px; }
+        .status-dang-xu-ly { background-color: #ffc107; color: #212529; }
+        .status-da-giao { background-color: #28a745; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 class="text-center mb-4 text-primary"><i class="bi bi-pencil-square"></i> SỬA ĐƠN HÀNG: {{ ma_dh }}</h2>
+        <div class="form-container">
+            <form method="POST" id="editOrderForm" onsubmit="return validateEditForm()">
+                <div class="row g-3 mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label required">Mã ĐH</label>
+                        <input type="text" name="MaDH" class="form-control" value="{{ ma_dh }}" readonly id="maDHInput">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label required">Khách hàng</label>
+                        <input type="text" name="TenKhachHang" class="form-control" value="{{ ten_kh }}" required
+                               {% if not cho_phep_sua %}readonly{% endif %} id="tenKHInput">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label required">Ngày bán</label>
+                        <input type="text" name="NgayBan" class="form-control" value="{{ ngay_ban }}" required readonly id="ngayBanInput">
+                        <small class="help-text">Ngày bán không thể thay đổi</small>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label required">Trạng thái</label>
+                        <select name="TrangThai" class="form-control" required id="trangThaiSelect">
+                            <option value="Đang xử lý" {% if trang_thai == 'Đang xử lý' %}selected{% endif %}>Đang xử lý</option>
+                            <option value="Đã giao hàng" {% if trang_thai == 'Đã giao hàng' %}selected{% endif %}>Đã giao hàng</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- Danh sách mặt hàng (ĐÃ XÓA TÊN SP) -->
+                <div id="itemsContainer">
+                    {% for item in items %}
+                    <div class="item-row" id="item{{ loop.index0 }}">
+                        <div class="row g-3 align-items-center">
+                            <div class="col-md-4">
+                                <label class="form-label">Mã SP</label>
+                                <select name="MaSP_{{ loop.index0 }}" class="form-control item-masp" {% if not cho_phep_sua %}disabled{% endif %} required onchange="updateItemInfo(this, {{ loop.index0 }})">
+                                    <option value="">-- Chọn mã SP --</option>
+                                    {% for ma_sp, info in sp_mapping.items() %}
+                                        <option value="{{ ma_sp }}" {% if item.MaSP == ma_sp %}selected{% endif %}>{{ ma_sp }} - {{ info.name }}</option>
+                                    {% endfor %}
+                                    <option value="NEW">-- Tạo SP mới --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Giá</label>
+                                <input type="number" name="GiaBan_{{ loop.index0 }}" class="form-control readonly-input" value="{{ item.GiaBan }}" readonly>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Số lượng</label>
+                                <input type="number" name="SoLuong_{{ loop.index0 }}" class="form-control item-soluong" min="1" max="10000" value="{{ item.SoLuongBan }}" {% if not cho_phep_sua %}disabled{% endif %} required oninput="updateItemTotal({{ loop.index0 }})">
+                            </div>
+                            <div class="col-md-2 text-center">
+                                <label class="form-label">&nbsp;</label>
+                                {% if cho_phep_sua %}
+                                <div><i class="bi bi-trash remove-item" onclick="removeItem({{ loop.index0 }})" style="font-size:1.5rem;"></i></div>
+                                {% else %}
+                                <div><i class="bi bi-lock-fill text-secondary" title="Không thể sửa khi đơn hàng không ở trạng thái Đang xử lý" style="font-size:1.5rem;"></i></div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-md-3 offset-md-9">
+                                <span class="fw-bold">Thành tiền: <span id="thanhTien_{{ loop.index0 }}">{{ (item.GiaBan * item.SoLuongBan)|int }}</span> đ</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% if cho_phep_sua %}
+                <div class="row mt-2">
+                    <div class="col-md-12">
+                        <button type="button" class="btn btn-outline-primary" onclick="addNewItem()"><i class="bi bi-plus"></i> Thêm mặt hàng</button>
+                    </div>
+                </div>
+                {% else %}
+                <div class="alert alert-warning mt-2">
+                    <i class="bi bi-exclamation-triangle"></i> Đơn hàng không ở trạng thái "Đang xử lý" nên không thể thay đổi danh sách mặt hàng. Bạn chỉ có thể thay đổi trạng thái.
+                </div>
+                {% endif %}
+                <div class="row mt-3">
+                    <div class="col-md-3 offset-md-9">
+                        <label class="form-label fw-bold">Tổng đơn hàng:</label>
+                        <div class="form-control auto-calc" id="tongDonHangDisplay">{{ items|sum(attribute='TongTien')|int }} đ</div>
+                        <input type="hidden" name="TongTien" id="tongDonHangInput" value="{{ items|sum(attribute='TongTien') }}">
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-md-12">
+                        <button type="submit" class="btn btn-primary w-100"><i class="bi bi-check-lg"></i> Lưu thay đổi</button>
+                        <a href="/" class="btn btn-secondary w-100 mt-2"><i class="bi bi-x-lg"></i> Hủy</a>
+                    </div>
+                </div>
+            </form>
+            <!-- Form tạo SP mới (ẩn) -->
+            <div class="new-sp-section" id="newSpSection" style="display: none;">
+                <h6 class="text-info mb-3"><i class="bi bi-plus-circle-dotted"></i> TẠO SẢN PHẨM MỚI</h6>
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <input type="text" id="maSPNewInput" class="form-control" placeholder="Mã SP mới">
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" id="tenSPNewInput" class="form-control" placeholder="Tên SP mới">
+                    </div>
+                    <div class="col-md-3">
+                        <input type="number" id="giaNewInput" class="form-control" placeholder="Giá" min="1">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-info w-100" onclick="addNewSP()"><i class="bi bi-check-lg"></i> Thêm</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const spMapping = {{ sp_mapping|tojson }};
+        let itemCount = {{ items|length }};
+        let selectedMasp = [];
+        const choPhepsua = {{ 'true' if cho_phep_sua else 'false' }};
+        function getPrice(ma_sp) {
+            return spMapping[ma_sp] ? spMapping[ma_sp].price : 0;
+        }
+        function updateSelectedMasp() {
+            const selects = document.querySelectorAll('select.item-masp');
+            selectedMasp = [];
+            selects.forEach(sel => {
+                if (!sel.disabled) {
+                    const val = sel.value;
+                    if (val && val !== 'NEW' && val !== '') {
+                        selectedMasp.push(val);
+                    }
+                }
+            });
+        }
+        function refreshDropdowns(exceptSelect = null) {
+            if (!choPhepsua) return;
+            const selects = document.querySelectorAll('select.item-masp');
+            const currentValues = {};
+            selects.forEach(sel => { if (!sel.disabled) currentValues[sel.name] = sel.value; });
+            selects.forEach(sel => {
+                if (sel.disabled || (exceptSelect && sel === exceptSelect)) return;
+                const currentVal = sel.value;
+                let optionsHtml = '<option value="">-- Chọn mã SP --</option>';
+                for (let ma in spMapping) {
+                    if (selectedMasp.includes(ma) && ma !== currentVal) {
+                        continue;
+                    }
+                    optionsHtml += `<option value="${ma}">${ma} - ${spMapping[ma].name}</option>`;
+                }
+                optionsHtml += '<option value="NEW">-- Tạo SP mới --</option>';
+                sel.innerHTML = optionsHtml;
+                if (currentVal && (currentVal === 'NEW' || spMapping[currentVal])) {
+                    sel.value = currentVal;
+                } else {
+                    sel.value = '';
+                }
+            });
+            updateSelectedMasp();
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            if (choPhepsua) {
+                updateSelectedMasp();
+                refreshDropdowns();
+            }
+            updateOrderTotal();
+            document.getElementById('ngayBanInput').addEventListener('change', function() {
+                if (!choPhepsua) return;
+                document.querySelectorAll('.item-row').forEach(row => {
+                    const id = row.id.replace('item','');
+                    const select = row.querySelector('select.item-masp');
+                    if (select.value && select.value !== 'NEW') {
+                        updateItemInfo(select, id);
+                    }
+                });
+            });
+        });
+        function addNewItem() {
+            if (!choPhepsua) return;
+            const container = document.getElementById('itemsContainer');
+            const idx = itemCount;
+            const div = document.createElement('div');
+            div.className = 'item-row';
+            div.id = `item${idx}`;
+            div.innerHTML = `
+                <div class="row g-3 align-items-center">
+                    <div class="col-md-4">
+                        <select name="MaSP_${idx}" class="form-control item-masp" required onchange="updateItemInfo(this, ${idx})">
+                            <option value="">-- Chọn mã SP --</option>
+                            ${Object.keys(spMapping).map(m => `<option value="${m}">${m} - ${spMapping[m].name}</option>`).join('')}
+                            <option value="NEW">-- Tạo SP mới --</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3"><input type="number" name="GiaBan_${idx}" class="form-control readonly-input" readonly></div>
+                    <div class="col-md-3"><input type="number" name="SoLuong_${idx}" class="form-control item-soluong" min="1" max="10000" value="1" required oninput="updateItemTotal(${idx})"></div>
+                    <div class="col-md-2 text-center"><i class="bi bi-trash remove-item" onclick="removeItem(${idx})" style="font-size:1.5rem;"></i></div>
+                </div>
+                <div class="row mt-2"><div class="col-md-3 offset-md-9"><span class="fw-bold">Thành tiền: <span id="thanhTien_${idx}">0</span> đ</span></div></div>
+            `;
+            container.appendChild(div);
+            itemCount++;
+            updateSelectedMasp();
+            refreshDropdowns();
+        }
+        function removeItem(idx) {
+            if (!choPhepsua) return;
+            document.getElementById(`item${idx}`)?.remove();
+            updateSelectedMasp();
+            refreshDropdowns();
+            updateOrderTotal();
+        }
+        function updateItemInfo(select, idx) {
+            if (!choPhepsua) return;
+            const ma = select.value;
+            const row = select.closest('.item-row');
+            if (!row) return;
+            const giaInput = row.querySelector(`input[name="GiaBan_${idx}"]`);
+            if (ma && ma !== 'NEW' && spMapping[ma]) {
+                giaInput.value = getPrice(ma);
+                updateItemTotal(idx);
+            } else if (ma === 'NEW') {
+                document.getElementById('newSpSection').style.display = 'block';
+                window.currentNewItemIndex = idx;
+            } else {
+                giaInput.value = '';
+                document.getElementById(`thanhTien_${idx}`).innerText = '0';
+            }
+            updateSelectedMasp();
+            refreshDropdowns(select);
+        }
+        function updateItemTotal(idx) {
+            const gia = parseFloat(document.querySelector(`input[name="GiaBan_${idx}"]`).value) || 0;
+            const sl = parseFloat(document.querySelector(`input[name="SoLuong_${idx}"]`).value) || 0;
+            document.getElementById(`thanhTien_${idx}`).innerText = (gia * sl).toLocaleString('vi-VN');
+            updateOrderTotal();
+        }
+        function updateOrderTotal() {
+            let total = 0;
+            document.querySelectorAll('.item-row').forEach(item => {
+                const id = item.id.replace('item', '');
+                const val = document.getElementById(`thanhTien_${id}`)?.innerText.replace(/\\./g, '').replace(' đ', '');
+                total += parseFloat(val) || 0;
+            });
+            document.getElementById('tongDonHangDisplay').innerText = total.toLocaleString('vi-VN') + ' đ';
+            document.getElementById('tongDonHangInput').value = total;
+        }
+        function addNewSP() {
+            const ma = document.getElementById('maSPNewInput').value.trim().toUpperCase();
+            const ten = document.getElementById('tenSPNewInput').value.trim();
+            const gia = parseFloat(document.getElementById('giaNewInput').value);
+            if (!ma || ma.length < 2) { alert('Mã SP không hợp lệ'); return; }
+            if (!ten || ten.length < 2) { alert('Tên SP không hợp lệ'); return; }
+            if (isNaN(gia) || gia < 1) { alert('Giá không hợp lệ'); return; }
+            fetch('/api/add_sp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ma_sp: ma, ten_sp: ten, gia_sp: gia })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    spMapping[ma] = { name: ten, price: gia };
+                    // Không cập nhật priceHistory nữa
+                    document.querySelectorAll('select.item-masp').forEach(s => {
+                        if (s.disabled) return;
+                        const opt = document.createElement('option');
+                        opt.value = ma;
+                        opt.text = `${ma} - ${ten}`;
+                        s.appendChild(opt);
+                    });
+                    if (window.currentNewItemIndex !== undefined) {
+                        const sel = document.querySelector(`select[name="MaSP_${window.currentNewItemIndex}"]`);
+                        if (sel && !sel.disabled) {
+                            sel.value = ma;
+                            updateItemInfo(sel, window.currentNewItemIndex);
+                        }
+                        window.currentNewItemIndex = undefined;
+                    }
+                    document.getElementById('newSpSection').style.display = 'none';
+                    document.getElementById('maSPNewInput').value = '';
+                    document.getElementById('tenSPNewInput').value = '';
+                    document.getElementById('giaNewInput').value = '';
+                    updateSelectedMasp();
+                    refreshDropdowns();
+                } else {
+                    alert('Lỗi: ' + data.error);
+                }
+            });
+        }
+        function validateEditForm() {
+            if (!document.getElementById('maDHInput').value.trim() || document.getElementById('maDHInput').value.trim().length < 2) {
+                alert('Mã đơn hàng phải có ít nhất 2 ký tự');
+                return false;
+            }
+            if (!document.getElementById('tenKHInput').value.trim() || document.getElementById('tenKHInput').value.trim().length < 2) {
+                alert('Tên khách hàng phải có ít nhất 2 ký tự');
+                return false;
+            }
+            const trangThaiSelect = document.getElementById('trangThaiSelect');
+            if (trangThaiSelect.value === 'Đã giao hàng') {
+                if (!confirm('Bạn có chắc chắn muốn đánh dấu đơn hàng là ĐÃ GIAO HÀNG? Hành động này sẽ không thể chỉnh sửa đơn hàng sau khi lưu.')) {
+                    return false;
+                }
+            }
+            const items = document.querySelectorAll('.item-row');
+            if (items.length === 0) {
+                alert('Phải có ít nhất một mặt hàng');
+                return false;
+            }
+            if (choPhepsua) {
+                const maspSet = new Set();
+                for (let i = 0; i < items.length; i++) {
+                    const sel = items[i].querySelector('select.item-masp');
+                    if (!sel.value || sel.value === 'NEW') {
+                        alert('Chọn mã SP cho mặt hàng thứ ' + (i + 1));
+                        return false;
+                    }
+                    if (maspSet.has(sel.value)) {
+                        alert(`Mã SP "${sel.value}" đã được chọn ở mặt hàng khác!`);
+                        return false;
+                    }
+                    maspSet.add(sel.value);
+                    const sl = items[i].querySelector('input.item-soluong').value;
+                    if (sl <= 0 || sl > 10000) {
+                        alert('Số lượng mặt hàng thứ ' + (i + 1) + ' không hợp lệ');
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
